@@ -1,0 +1,438 @@
+---
+title: "Introduction to t-SNE"
+author: "Nurlan Dauletbayev"
+date: "2023-12-21"
+output: html_document
+---
+This tutorial will compare the classical (metric) MDS (cMDS) with a popular non-linear dimensionality reduction algorithm "t-SNE". "t-SNE" stands for "t-distributed Stochastic Neighbor Embedding". A specific dataset called "Diabetes prediction dataset" (https://www.kaggle.com/datasets/iammustafatz/diabetes-prediction-dataset/data) will be used in this tutorial.
+
+First, we will need to install two R packages:
+```{r}
+install.packages("Rtsne", repos = "http://cran.us.r-project.org")
+library(Rtsne)
+```
+Next, we will import and check the dataset.
+```{r}
+myData <- read.csv(file.choose())
+dim(myData)
+head(myData)
+tail(myData)
+lapply(myData, class)
+```
+One categorical variable comprises character strings. This variable needs to be transformed as the "factor" type variable.
+```{r}
+myData$gender <- as.factor(myData$gender)
+class(myData$gender)
+levels(myData$gender)
+table(myData$gender)
+```
+Other categorical variables are presented as integer variables. Please note that for the purpose of this tutorial, the formerly character variable "smoking_history" has been modified to comprise the integers 0 - 4 and 99, with the latter replacing the original "No Info" category
+```{r}
+table(myData$hypertension)
+table(myData$heart_disease)
+table(myData$smoking_history)
+table(myData$diabetes)
+```
+We will start with subsetting 200 observations from this dataset. The subsetting is necessary because of the large size (100,000 observations) of the dataset. The original dataset will require extensive amounts of time if used in cMDS or t-SNE, and plotting of data points will appear smudged because of the sheer amount of data.
+```{r}
+myData.10001_10200 <- myData[c(10001 : 10200), ]
+dim(myData.10001_10200)
+head(myData.10001_10200)
+tail(myData.10001_10200)
+```
+This will characterize the new subset of 200 observations.
+```{r}
+table(myData.10001_10200$gender)
+table(myData.10001_10200$hypertension)
+table(myData.10001_10200$heart_disease)
+table(myData.10001_10200$smoking_history)
+table(myData.10001_10200$diabetes)
+```
+It is necessary to verify that the new subset adequately represents the original dataset. For this, the two datasets will be compared in the distribution of values within the variable "age". Based on the group distributions shown above, it appears that the new subset is not a good representation of the original dataset. Still, additional confirmation will be useful.
+
+It will be helpful if we put the histograms of the two analyzed datasets side by side. This is achieved by introducing the function "par(mfrow = )" before the plot. Try to swich "2" and "1" in this function and see what happens with the plot layout.
+
+Note: the number of "breaks" defines the number of bins by which the variable "age" will be presented in the histograms. Try to change this number and see what happens.
+```{r}
+par(mfrow = c(1, 2))
+hist(myData$age, breaks = 25, 
+     ylim = c(0, 10000), col = "lightblue", main = "", xlab = "age, years")
+hist(myData.10001_10200$age, breaks = 25, ylim = c(0, 25),
+     col = "lightpink", main = "", xlab = "age, years")
+```
+
+Both histograms are not very similar, so another subset will be generated in the next section. For now, we will note that the  subset of 200 observations does not adequately represent the original dataset. We will still transform it as a matrix, so we can use it later for comparison purposes.
+```{r}
+myMatrix_10001_10200 <- as.matrix(myData.10001_10200[, -1])
+class(myMatrix_10001_10200)
+dim(myMatrix_10001_10200)
+head(myMatrix_10001_10200)
+tail(myMatrix_10001_10200)
+```
+We will now subset the first 2000 observations from the original dataset and verify the comparability of the new dataset with the original one.
+```{r}
+myData.1_2000 <- myData[c(1 : 2000), ]
+dim(myData.1_2000)
+head(myData.1_2000)
+tail(myData.1_2000)
+
+table(myData.1_2000$gender)
+table(myData.1_2000$hypertension)
+table(myData.1_2000$heart_disease)
+table(myData.1_2000$smoking_history)
+table(myData.1_2000$diabetes)
+
+par(mfrow = c(1, 2))
+hist(myData$age, breaks = 25, 
+     ylim = c(0, 10000), col = "lightblue", main = "", xlab = "age, years")
+hist(myData.1_2000$age, breaks = 25, ylim = c(0, 200),
+     col = "lightpink", main = "", xlab = "age, years")
+```
+
+This new dataset appears to be more representative of the original dataset than the dataset of 200 observations. However, we would still like a more adequate representation of the original dataset. Before carrying out another subsetting, the dataset of 2000 observations will be transformed as a matrix.
+```{r}
+myMatrix_1_2000 <- as.matrix(myData.1_2000[, -1])
+class(myMatrix_1_2000)
+dim(myMatrix_1_2000)
+head(myMatrix_1_2000)
+tail(myMatrix_1_2000)
+```
+The new subsetting will be done using the function "sample()". This function randomly selects a given number of observations. The random selection of the observations, in a combination with a larger size of the new dataset (e.g., 4,000), should yield a more representative dataset. We will verify the representativeness by, again, building two histograms based on the variable "age".
+
+Please take a note of the function "set.seed()" below. This function ensures reproducibility of random sampling. Without this function, each new use of function "sample()" would result in creation of a slightly different dataset. The number within the parenthesis (here: 42) is not essential and can be replaced with any other random number.
+```{r}
+set.seed(42)
+myData.RandomSubset <- myData[sample(nrow(myData), size = 4000), ]
+dim(myData.RandomSubset)
+head(myData.RandomSubset)
+tail(myData.RandomSubset)
+table(myData.RandomSubset$gender)
+table(myData.RandomSubset$hypertension)
+table(myData.RandomSubset$heart_disease)
+table(myData.RandomSubset$smoking_history)
+table(myData.RandomSubset$diabetes)
+
+par(mfrow=c(1, 2))
+hist(myData$age, breaks = 25, 
+     ylim = c(0, 10000), col = "lightblue", main = "", xlab = "age, years")
+hist(myData.RandomSubset$age, breaks = 25, ylim = c(0, 450),
+     col = "lightpink", main = "", xlab = "age, years")
+```
+
+The new dataset appears to be very similar to the original dataset and will be used in the majority of the subsequent analyses. But first, we will need to turn this new dataset into a matrix.
+```{r}
+myMatrix_RandomSubset <- as.matrix(myData.RandomSubset[, -1])
+class(myMatrix_RandomSubset)
+dim(myMatrix_RandomSubset)
+head(myMatrix_RandomSubset)
+tail(myMatrix_RandomSubset)
+```
+The next step should be familiar. We will need to carry out the Z-score normalization using function "scale()". This will be followed up by calculation of a distance matrix.
+```{r}
+myMatrix_RandomSubset_sc <- scale(myMatrix_RandomSubset,
+                                  center = TRUE, scale = TRUE)
+
+myDist_RandomSubset <- dist(myMatrix_RandomSubset_sc, method = "euclidean")
+```
+The next step will be to apply cMDS analysis to the distance matrix and then plot the data points. Please note that due to a substantial size (N = 4,000 observations), cMDS will take some time to be completed.
+```{r}
+my_cMDS_RandomSubset <- cmdscale(myDist_RandomSubset, k = 2)
+dim(my_cMDS_RandomSubset)
+head(my_cMDS_RandomSubset)
+tail(my_cMDS_RandomSubset)
+
+par(mfrow = c(1, 1))
+plot(my_cMDS_RandomSubset, xlab = "cMDS, dim 1", ylab = "cMDS, dim 2")
+```
+
+Please note that we needed to again use the function "par(mfrow = ())", this time, to make the plot over one column.
+
+The plot shows two unequally-sized groups (clusters) of data points. The relative proportions of these clusters are different from the gender distribution in this subset (about 60% female patients, 40% male patients, and 0.05% of other genders). So it must be some other variable(s) that contributed to cMDS mapping of two well-formed clusters. We will do some investigation to identify this variable(s).
+
+We will first start with testing the importance of the variable "hypertension" (which is the second variable in the matrix "myMatrix_RandomSubset"). This variable has binary values (that is, "0"s and "1"s). Our assumption is that by replacing the "1"s with zeros in this variable, we will diminish its impact on the ordination of data points by cMDS. In particular, we expect a complete disappearance of the aforementioned well-formed clusters or some degree of fusion of these clusters. 
+
+To replace the "1"s, we will use the R function under homonymous name (i.e., "replace()").
+
+To avoid transformation of the aforementioned matrix, it will be copied into another R object
+```{r}
+myMatrix_RandomSubset.var.2 <- myMatrix_RandomSubset
+head(myMatrix_RandomSubset.var.2)
+table(myMatrix_RandomSubset.var.2[, 2])
+myMatrix_RandomSubset.var.2[, 2] <- replace(myMatrix_RandomSubset.var.2[, 2],
+                                      myMatrix_RandomSubset.var.2[, 2] > 0,
+                                      0)
+table(myMatrix_RandomSubset.var.2[, 2])
+myMatrix_RandomSubset.var.2_sc <- scale(myMatrix_RandomSubset.var.2,
+                                  center = TRUE, scale = TRUE)
+
+myDist_RandomSubset.var.2 <- dist(myMatrix_RandomSubset.var.2_sc, method = "euclidean")
+
+my_cMDS_RandomSubset.var.2 <- cmdscale(myDist_RandomSubset.var.2, k = 2)
+dim(my_cMDS_RandomSubset.var.2)
+head(my_cMDS_RandomSubset.var.2)
+tail(my_cMDS_RandomSubset.var.2)
+```
+We will then plot the cMDS mapping of the new matrix.
+```{r}
+par(mfrow = c(1, 1))
+plot(my_cMDS_RandomSubset.var.2, xlab = "cMDS, dim 1", ylab = "cMDS, dim 2")
+```
+
+The new plot has barely changed from the original cMDS mapping. This speaks against substantial importance of the "hypertension" variable. We will next try to apply the same approach to the binary variable "diabetes".
+```{r}
+myMatrix_RandomSubset.var.8 <- myMatrix_RandomSubset
+head(myMatrix_RandomSubset.var.8)
+table(myMatrix_RandomSubset.var.8[, 8])
+myMatrix_RandomSubset.var.8[, 8] <- replace(myMatrix_RandomSubset.var.8[, 8],
+                                        myMatrix_RandomSubset.var.8[, 8] > 0,
+                                        0)
+table(myMatrix_RandomSubset.var.8[, 8])
+myMatrix_RandomSubset.var.8_sc <- scale(myMatrix_RandomSubset.var.8,
+                                    center = TRUE, scale = TRUE)
+
+myDist_RandomSubset.var.8 <- dist(myMatrix_RandomSubset.var.8_sc, method = "euclidean")
+
+my_cMDS_RandomSubset.var.8 <- cmdscale(myDist_RandomSubset.var.8, k = 2)
+dim(my_cMDS_RandomSubset.var.8)
+head(my_cMDS_RandomSubset.var.8)
+tail(my_cMDS_RandomSubset.var.8)
+
+par(mfrow = c(1, 1))
+plot(my_cMDS_RandomSubset.var.8, xlab = "cMDS, dim 1", ylab = "cMDS, dim 2")
+```
+
+This time, following modification of the "diabetes" variable, the data points of cMDS plot showed a substantially different mapping, supporting the importance of this variable for cMDS mapping. 
+
+You should note this approach. It is a variation of a popular method called "sensitivity analysis". The latter is often used both in statistics and machine learning for evaluation of the relative importance of dataset variables for the overall outcome. You should try to apply this approach to the variable "heart_disease".
+
+Our investigation will go further. Dataset visualization is an important method in unsupervised learning. Additional information can be presented by using the color, in particular, for a better separation of data points. This will be done next. Since variable "diabetes" turned to be important, the color coding will be applied for this variable.
+
+First, the unmodified "diabetes" variable will be copied into a new R object.
+```{r}
+table(myMatrix_RandomSubset[, 8])
+diabetes_new_variable <- myMatrix_RandomSubset[, 8]
+length(diabetes_new_variable)
+head(diabetes_new_variable)
+tail(diabetes_new_variable)
+```
+Please note that testing of the "head" and "tail" of this new variable did not reveal "1"s, so only "0"s were seen. We will need to control the subsequent data transformation within this variable. We will try to yield a better visualization the binary data within the new variable by showing other parts of the latter.
+
+You also should note that the new variable shows the original row numbers. We will apply R function "class()" to the new variable to find out its class. 
+
+```{r}
+class(diabetes_new_variable)
+```
+Please try to explain how a numeric vector can carry row names. In the mean time, we will check the binary data somewhere deeper in the variable
+```{r}
+print(diabetes_new_variable[c(2000:2100)])
+```
+This approach worked better, and we can see both "0"s and "1"s. We will next replace the "0"s with the label "no_diabetes", and the "1"s with the label "diabetes". This will simplify the subsequent creation of the legend and the color codes. 
+```{r}
+diabetes_new_variable <- replace(diabetes_new_variable, 
+                                 diabetes_new_variable == 0,
+                                 "no_diabetes")
+print(diabetes_new_variable[c(2000:2100)])
+diabetes_new_variable <- replace(diabetes_new_variable, 
+                                 diabetes_new_variable == 1,
+                                 "diabetes")
+print(diabetes_new_variable[c(2000:2100)])
+```
+The label replacement worked well. The next step will be to assign a proper type to the variable. Typically, replacement from the integer or numeric values to character labels ends up with the variable silently changing its data type You should be aware that such silent data type changes should be controlled, or else the subsequent programming may lead to an error.
+```{r}
+class(diabetes_new_variable)
+diabetes_new_variable <- as.factor(diabetes_new_variable)
+class(diabetes_new_variable)
+levels(diabetes_new_variable)
+```
+We will next produce a data frame with coordinates of cMDS mapping.
+```{r}
+my_cMDS_RandomSubset_df <- as.data.frame(my_cMDS_RandomSubset)
+class(my_cMDS_RandomSubset_df)
+dim(my_cMDS_RandomSubset_df)
+head(my_cMDS_RandomSubset_df)
+tail(my_cMDS_RandomSubset_df)
+```
+The next step is to combine the new variable with the "diabetes" / "no_diabetes" labels. Note that the variable will be added twice (so this is not a mistake).
+```{r}
+my_cMDS_RandomSubset_df <- cbind.data.frame(my_cMDS_RandomSubset_df, 
+                                            diabetes_new_variable,
+                                            diabetes_new_variable)
+head(my_cMDS_RandomSubset_df)
+tail(my_cMDS_RandomSubset_df)
+```
+This will replace the variable names in the new data frame.
+```{r}
+colnames(my_cMDS_RandomSubset_df) <- c("V1", "V2",
+                                       "diabetes_status",
+                                       "color")
+head(my_cMDS_RandomSubset_df)
+```
+Thereby, we obtained two identical variables carrying different names: "diabetes_status" and "color". The labels in the latter variable will now be transformed into the labels that code for color definitions. But first, the "color" variable needs to be transformed into the "character" type variable. Otherwise, the replacement won't be successful due to the limitations of the "factor" type objects.
+```{r}
+my_cMDS_RandomSubset_df$color <- as.character(my_cMDS_RandomSubset_df$color)
+class(my_cMDS_RandomSubset_df$color)
+my_cMDS_RandomSubset_df$color <- replace(my_cMDS_RandomSubset_df$color,
+                                         my_cMDS_RandomSubset_df$color ==
+                                           "no_diabetes",
+                                         "cornflowerblue")
+print(my_cMDS_RandomSubset_df$color[c(2000:2100)])
+my_cMDS_RandomSubset_df$color <- replace(my_cMDS_RandomSubset_df$color,
+                                         my_cMDS_RandomSubset_df$color ==
+                                           "diabetes",
+                                         "palevioletred1")
+print(my_cMDS_RandomSubset_df$color[c(2000:2100)])
+```
+Thereby we obtained a data frame that has two variables with coordinates for cMDS mapping (respectively, first and second dimensions), one variable with the labels for the diabetes status ("diabetes" / "no_diabetes"), and one variable that bears color codes ("cornflowerblue" for observations with the label "no diabetes" and "palevioletred1" for the label "diabetes"). We will next test the color distribution in the aforementioned clusters. We will also add a legend to the plot to facilitate the appreciation of data points.
+```{r}
+plot(x = my_cMDS_RandomSubset_df$V1, 
+     y = my_cMDS_RandomSubset_df$V2, pch = 19, 
+     xlab = "cMDS, dim 1", ylab = "cMDS, dim 2",
+     col = my_cMDS_RandomSubset_df$color)
+legend(x = "topleft", pch = 19, legend = c("diabetes", "no_diabetes"),
+       col = c("palevioletred1", "cornflowerblue"))
+```
+
+As this color visualization demonstrates, the great majority of data points fall within the expected clusters. There are a few "no_diabetes" data points that appear on the border between the two clusters, but largely, the separation between the "no_diabetes" and "diabetes" data points is quite sharp.
+
+Please try to carry out a similar color separation using the previously tested variable "hypertension".
+
+It was mentioned before that there are some "no_diabetes" data points that are "mingled" with the "diabetes" data points. We will next test whether the cluster separation will be improved if we use fewer data points (e.g., 200 observations).
+```{r}
+myMatrix_10001_10200_sc <- scale(myMatrix_10001_10200,
+                            center = TRUE, scale = TRUE)
+myDist_10000_10200 <- dist(myMatrix_10001_10200_sc, method = "euclidean")
+
+my_cMDS_10000_10200 <- cmdscale(myDist_10000_10200, k = 2)
+dim(my_cMDS_10000_10200)
+head(my_cMDS_10000_10200)
+tail(my_cMDS_10000_10200)
+
+par(mfrow = c(1, 1))
+plot(my_cMDS_10000_10200, xlab = "cMDS, dim 1", ylab = "cMDS, dim 2")
+
+diabetes_new_variable_200 <- myMatrix_10001_10200[, 8]
+length(diabetes_new_variable_200)
+head(diabetes_new_variable_200)
+tail(diabetes_new_variable_200)
+print(diabetes_new_variable_200[c(120:140)])
+diabetes_new_variable_200 <- replace(diabetes_new_variable_200, 
+                                     diabetes_new_variable_200 == 0,
+                                     "no_diabetes")
+print(diabetes_new_variable_200[c(120:140)])
+diabetes_new_variable_200 <- replace(diabetes_new_variable_200, 
+                                     diabetes_new_variable_200 == 1,
+                                     "diabetes")
+print(diabetes_new_variable_200[c(120:140)])
+class(diabetes_new_variable_200)
+diabetes_new_variable_200 <- as.factor(diabetes_new_variable_200)
+class(diabetes_new_variable_200)
+levels(diabetes_new_variable_200)
+
+my_cMDS_10000_10200_df <- as.data.frame(my_cMDS_10000_10200)
+class(my_cMDS_10000_10200_df)
+dim(my_cMDS_10000_10200_df)
+head(my_cMDS_10000_10200_df)
+tail(my_cMDS_10000_10200_df)
+
+my_cMDS_10000_10200_df <- cbind.data.frame(my_cMDS_10000_10200_df, 
+                                           diabetes_new_variable_200,
+                                           diabetes_new_variable_200)
+head(my_cMDS_10000_10200_df)
+tail(my_cMDS_10000_10200_df)
+colnames(my_cMDS_10000_10200_df) <- c("V1", "V2",
+                                       "diabetes_status",
+                                       "color")
+head(my_cMDS_10000_10200_df)
+my_cMDS_10000_10200_df$color <- as.character(my_cMDS_10000_10200_df$color)
+class(my_cMDS_10000_10200_df$color)
+my_cMDS_10000_10200_df$color <- replace(my_cMDS_10000_10200_df$color,
+                                        my_cMDS_10000_10200_df$color ==
+                                           "no_diabetes",
+                                         "cornflowerblue")
+print(my_cMDS_10000_10200_df$color[c(120:140)])
+my_cMDS_10000_10200_df$color <- replace(my_cMDS_10000_10200_df$color,
+                                        my_cMDS_10000_10200_df$color ==
+                                           "diabetes",
+                                         "palevioletred1")
+print(my_cMDS_10000_10200_df$color[c(120:140)])
+
+
+plot(x = my_cMDS_10000_10200_df$V1, 
+     y = my_cMDS_10000_10200_df$V2,
+     pch = 19,
+     xlab = "cMDS, dim 1", ylab = "cMDS, dim 2",
+     col = my_cMDS_10000_10200_df$color)
+legend(x = "topleft", pch = 19, legend = c("diabetes", "no_diabetes"),
+       col = c("palevioletred1", "cornflowerblue"))
+```
+
+As expected, the separation of data points is much sharper when fewer data points are mapped by cMDS.
+
+This little study demonstrates the strenghs and limitations of cMDS.
+1. This method is metric and linear. This makes the mapping predictable: if there is a good separation with many data points, there is a good chance that the separation will improve when there is fewer data points.
+2. The "sensitivity analysis" method is very easy to carry out with cMDS mapping due to the aforementioned predictivity. Also, the above exploration was not designed to demonstrate this, but cMDS is a very robust method (meaning that it is not too sensitive to small changes but will respond to a variable transformation with substantial impact).
+3. The biggest limitation of cMDS is that it struggles with large datasets, both with computational time and the actual mapping. In particular, even the well-formed clusters will eventually be lost if the dataset has too many data points.
+
+The subsequently addressed non-linear ordination technique t-SNE is one of the many attempts to overcome the limitations of cMDS.
+
+Important note! Neither cMDS nor t-SNE are clustering methods per se. Their primary aim is ordination. Ordination in this context means the data point mapping in a low-dimensional space. The "by-products" of this ordination could visualization of potential clusters or demonstration of other hidden patterns within the dataset. Yet these are not the main purpose why cMDS or t-SNE are applied to complex biomedical datasets. There are dedicated clustering methods (e.g., partition around medoids, k-means clustering, hierarchical clustering) whose primarily aim to identify the clusters within the analyzed dataset. The clustering methods will be addressed separately.
+
+As next, we will apply t-SNE to the "random" subset of the "diabetes_prediction_dataset".
+
+Please take a note of the following things:
+1. The use of the "set.seed()" function. Like many other machine learning methods, t-SNE has a certain built-in stochasticity. To make the analysis reproducible, we will need to define the "seed".
+2. The computational time for t-SNE mapping (which is much shorter than with cMDS).
+3. The "perplexity" hyperparameter. It will be addressed below.
+4. The number of iterations. This, too, will be addressed below.
+
+The input for t-SNE can be original data (with or without PCA pre-processing) or a distance matrix. For better comparison, we will use the previously calculated distance matrix. Function "str()" will show the structure of t-SNE analysis. The argument "dims = 2" means that we want to have the mapping in two dimensions. The argument "check_duplicates = FALSE" is necessary to avoid error messages that appear when are observations with very similar attributes.
+```{r}
+set.seed(42)
+myRtsne_result <- Rtsne(myDist_RandomSubset, dims = 2, perplexity = 40,
+                        pca = FALSE, max_iter = 333, is_distance = TRUE,
+                        check_duplicates = FALSE)
+str(myRtsne_result)
+head(myRtsne_result$Y)
+tail(myRtsne_result$Y)
+```
+The following code will generate a data frame with the coordinates produced by t-SNE mapping, modify the variable names, and assign the color labels to appropriate observations (that is, similar to the above cMDS plot).
+```{r}
+myRtsne_result_df <- cbind.data.frame(x = myRtsne_result$Y[, 1], 
+                                      y = myRtsne_result$Y[, 2], 
+                                      diabetes_new_variable, 
+                                      diabetes_new_variable)
+head(myRtsne_result_df)
+tail(myRtsne_result_df)
+colnames(myRtsne_result_df) <- c("V1", "V2",
+                                 "diabetes_status",
+                                 "color")
+head(myRtsne_result_df)
+myRtsne_result_df$color <- as.character(myRtsne_result_df$color)
+class(myRtsne_result_df$color)
+myRtsne_result_df$color <- replace(myRtsne_result_df$color,
+                                   myRtsne_result_df$color ==
+                                     "no_diabetes",
+                                   "cornflowerblue")
+print(myRtsne_result_df$color[c(2000 : 2100)])
+myRtsne_result_df$color <- replace(myRtsne_result_df$color,
+                                   myRtsne_result_df$color ==
+                                     "diabetes",
+                                   "palevioletred1")
+print(myRtsne_result_df$color[c(2000 : 2100)])
+```
+The next will produce the mapping by t-SNE. The argument "asp = 1" defines a more "condensed" aspect of the plot. This is necessary to accomodate the legend. 
+```{r}
+par(mfrow = c(1, 1))
+plot(x = myRtsne_result_df$V1, 
+     y = myRtsne_result_df$V2, pch = 19, asp = 1,
+     xlab = "t-SNE, dim 1", ylab = "t-SNE, dim 2",
+     col = myRtsne_result_df$color)
+legend(x = "bottomright", pch = 19, legend = c("diabetes", "no_diabetes"),
+       col = c("palevioletred1", "cornflowerblue"))
+```
+
+Unlike with cMDS mapping, the mapping by t-SNE produced several tight and smaller clusters within the "no_diabetes" cluster. The same is applicable to the "diabetes" cluster. Note that both the smaller and larger clusters are much tighter than those produced by cMDS. This is because t-SNE attempts to preserve local distances (i.e., within a cluster) at the expence of global distances (i.e., between clusters), which is different from cMDS. Thereby, t-SNE is much less affected by a large number of data points in the dataset.
+
+The limitation of t-SNE is that this method is sensitive to hyperparameters "perplexity" and "max_iter". The former roughly corresponds to the anticipated number of "neighbors" (that is, data points within a cluster). The latter hyperparameter defines the number of iterations to repeat the process when t-SNE looks for an optimal approximation of the original dataset (please see my other tutorial for details). There some general recommendations for both. The original publication (https://jmlr.org/papers/v9/vandermaaten08a.html) recommends the optimal "perplexity" value between 5 and 50. A follow-up publication (https://www.nature.com/articles/s41467-019-13056-x) set the "perplexity" to 1% of the dataset (in our case: 40) in order to improve the mapping of the global dataset structure. The latter publication also set the very minimal number of iterations above 200 or (preferrably) to 1/12 of the size of the dataset (in our case: 333). Please try to use the "perplexity" at 5, 15, and 30, or increase the number of iterations up to 1000, to see how the mapping will change.
+
+While the preservation of the local dataset structure is a distinct advantage of t-SNE over cMDS, the volatility associated with even the slightest changes of the aforementioned hyperparameters make this method less predictable (and often, less plausible). Still, t-SNE, and especially the newer method "UMAP", are very popular methods to map the transcriptome findings, including the results of single-cell sequencing.
